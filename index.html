@@ -1,3 +1,4 @@
+<!-- /mnt/data/runez_v11_persistent_runes_and_mv_MAGIC_FULLTURN_MP_COST_UNDOFIX_ROTATE_MIN (1).html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,7 +14,7 @@
   main{display:grid;grid-template-columns:1fr 420px;gap:18px;padding:18px;min-height:0;}
   @media (max-width: 1280px){ main{grid-template-columns:1fr;} }
   #boardWrap{border:1px solid #a6885e;border-radius:16px;overflow:auto;position:relative;height:800px;min-height:800px;max-width:100%;background:radial-gradient(130% 90% at 50% 10%, rgba(0,0,0,0.12), rgba(0,0,0,0)), linear-gradient(90deg, rgba(80,58,39,0.28) 0 1px, rgba(255,255,255,0) 1px) 0 0/16px 100%,repeating-linear-gradient(0deg,#e9d2aa,#e1c394 24px,#d8b781 48px,#d0ab74 72px);}#boardWrap:before,#boardWrap:after{content:'';position:absolute;width:26px;height:26px;border:2px solid #a6885e;border-radius:4px;opacity:.8;}#boardWrap:before{left:10px;top:10px;border-right:none;border-bottom:none;}#boardWrap:after{right:10px;bottom:10px;border-left:none;border-top:none;}
-  #sidebar{border:1px solid #7a5a3c;border-radius:16px;padding:12px;display:grid;gap:12px;height:100%;min-height:0;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0)), repeating-linear-gradient(0deg,#5a422d,#4a3726 28px,#3f2e21 56px);}
+  #sidebar{border:1px solid #7a5a3c;border-radius:16px;padding:12px;display:grid;gap:12px;height:100%;min-height:0;background:linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0)), repeating-linear-gradient(0deg,#5a422d,#4a3726 28px,#3f2e21 56px);}
   .stack{display:grid;gap:8px;}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .stat{border:1px solid #826444;border-radius:12px;padding:10px;text-align:center;min-width:100px;background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0));}
@@ -48,6 +49,7 @@
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
     <div class="chip"><strong>Gold</strong> ⏱ <span id="clock-orange">10:00</span></div>
+    <div style="font-weight:600">Runez — 4–5–4–5–4 honeycomb (C#R#, rotated)</div>
     <div class="chip"><strong>Silver</strong> ⏱ <span id="clock-blue">10:00</span></div>
   </div>
 </header>
@@ -85,6 +87,7 @@
 </main>
 <footer>
   <button id="undoBtn" class="btn ghost">Undo</button>
+  <button id="startGame" class="btn">Start Game</button>
   <button id="endTurn" class="btn">End Turn</button>
   <button id="resetPending" class="btn ghost">Reset pending</button>
   <span style="opacity:.7">22 cells, tight pointy-top honeycomb. Pawns placed per your C#R# list.</span>
@@ -102,32 +105,47 @@
     {code:'LAGUZ',   sym:'ᛚ'},{code:'INGWAZ', sym:'ᛜ'},{code:'DAGAZ',   sym:'ᛞ'},{code:'OTHALA',sym:'ᛟ'},
   ];
 
-  // --- Geometry: pointy-top honeycomb, 5 rows (levels) with alternating horizontal offsets ---
-  const size = 72; // big tiles
-  const h = size;                       // radius along pointy axis
-  const w = Math.sqrt(3) * size;        // width corner to corner
-  const vStep = 1.5 * size;             // vertical distance between rows
-  const xStep = w;                       // horizontal spacing between same-row neighbors
-  const rowOffset = 0.5 * w;             // half shift for even rows
-
-  // Column definitions and labels
-  const columns = {
-    1: 4, 2: 5, 3: 4, 4: 5, 5: 4
+  // ---- (1) Rune effect registry (placeholders) ----
+  // Rune effect registry: key = rune code, value = { costMp, activate(state, context) }
+  const RUNE_EFFECTS = {
+    FEHU:    { costMp: 0, activate(state, ctx){ ctx.log(`FEHU effect triggered by ${ctx.playerKey} at ${ctx.rune.cellId}.`); } },
+    URUZ:    { costMp: 0, activate(state, ctx){ ctx.log(`URUZ effect triggered by ${ctx.playerKey}.`); } },
+    THURISAZ:{ costMp: 0, activate(state, ctx){ ctx.log(`THURISAZ effect triggered by ${ctx.playerKey}.`); } },
+    ANSUZ:   { costMp: 0, activate(state, ctx){ ctx.log(`ANSUZ effect triggered by ${ctx.playerKey}.`); } },
+    RAIDHO:  { costMp: 0, activate(state, ctx){ ctx.log(`RAIDHO effect triggered by ${ctx.playerKey}.`); } },
+    KAUNA:   { costMp: 0, activate(state, ctx){ ctx.log(`KAUNA effect triggered by ${ctx.playerKey}.`); } },
+    GEBO:    { costMp: 0, activate(state, ctx){ ctx.log(`GEBO effect triggered by ${ctx.playerKey}.`); } },
+    WUNJO:   { costMp: 0, activate(state, ctx){ ctx.log(`WUNJO effect triggered by ${ctx.playerKey}.`); } },
+    HAGALAZ: { costMp: 0, activate(state, ctx){ ctx.log(`HAGALAZ effect triggered by ${ctx.playerKey}.`); } },
+    NAUDIZ:  { costMp: 0, activate(state, ctx){ ctx.log(`NAUDIZ effect triggered by ${ctx.playerKey}.`); } },
+    ISAZ:    { costMp: 0, activate(state, ctx){ ctx.log(`ISAZ effect triggered by ${ctx.playerKey}.`); } },
+    JERA:    { costMp: 0, activate(state, ctx){ ctx.log(`JERA effect triggered by ${ctx.playerKey}.`); } },
+    EIHWAZ:  { costMp: 0, activate(state, ctx){ ctx.log(`EIHWAZ effect triggered by ${ctx.playerKey}.`); } },
+    PERTHRO: { costMp: 0, activate(state, ctx){ ctx.log(`PERTHRO effect triggered by ${ctx.playerKey}.`); } },
+    ALGIZ:   { costMp: 0, activate(state, ctx){ ctx.log(`ALGIZ effect triggered by ${ctx.playerKey}.`); } },
+    SOWILO:  { costMp: 0, activate(state, ctx){ ctx.log(`SOWILO effect triggered by ${ctx.playerKey}.`); } },
+    TIWAZ:   { costMp: 0, activate(state, ctx){ ctx.log(`TIWAZ effect triggered by ${ctx.playerKey}.`); } },
+    BERKANO: { costMp: 0, activate(state, ctx){ ctx.log(`BERKANO effect triggered by ${ctx.playerKey}.`); } },
+    EHWAZ:   { costMp: 0, activate(state, ctx){ ctx.log(`EHWAZ effect triggered by ${ctx.playerKey}.`); } },
+    MANNAZ:  { costMp: 0, activate(state, ctx){ ctx.log(`MANNAZ effect triggered by ${ctx.playerKey}.`); } },
+    LAGUZ:   { costMp: 0, activate(state, ctx){ ctx.log(`LAGUZ effect triggered by ${ctx.playerKey}.`); } },
+    INGWAZ:  { costMp: 0, activate(state, ctx){ ctx.log(`INGWAZ effect triggered by ${ctx.playerKey}.`); } },
+    DAGAZ:   { costMp: 0, activate(state, ctx){ ctx.log(`DAGAZ effect triggered by ${ctx.playerKey}.`); } },
+    OTHALA:  { costMp: 0, activate(state, ctx){ ctx.log(`OTHALA effect triggered by ${ctx.playerKey}.`); } },
   };
 
-  // Build cells following your layout visualization
-  const cells = {};           // id -> {id,label,col,row,center} 
-  const centers = {};         // id -> {x,y}
-  const cellList = [];        // ordered list
-  const levels = [1,2,3,4,5]; // top to bottom
-
-  // We'll place positions by rows (levels). For each level, compute x start with row offset.
-  // Map presence by your spec:
-  // Level 1: C1R1..C5R1
-  // Level 2: C1R2..C5R2
-  // Level 3: C1R3..C5R3
-  // Level 4: C1R4..C5R4
-  // Level 5: C2R5 and C4R5 only
+  // --- Geometry, cells, graph (unchanged) ---
+  const size = 72;
+  const h = size;
+  const w = Math.sqrt(3) * size;
+  const vStep = 1.5 * size;
+  const xStep = w;
+  const rowOffset = 0.5 * w;
+  const columns = { 1:4, 2:5, 3:4, 4:5, 5:4 };
+  const cells = {};
+  const centers = {};
+  const cellList = [];
+  const levels = [1,2,3,4,5];
   const present = new Set([
     'C1R1','C2R1','C3R1','C4R1','C5R1',
     'C1R2','C2R2','C3R2','C4R2','C5R2',
@@ -138,143 +156,113 @@
 
   const svg = document.getElementById('board');
 
-  
+  function placeCells(){
+    const S = size;
+    const rt3 = Math.sqrt(3);
+    const heights = [4,5,4,5,4];
 
-function placeCells(){
-  // TRUE tessellation: flat-top odd-q grid with manual shift for C2 and C4 upwards
-  const S = size;
-  const rt3 = Math.sqrt(3);
-  const heights = [4,5,4,5,4];
-  const svg = document.getElementById('board');
+    for (const k of Object.keys(centers)) delete centers[k];
+    cellList.length = 0;
 
-  for (const k of Object.keys(centers)) delete centers[k];
-  cellList.length = 0;
+    const padX = 130, padY = 200;
+    let maxX = 0, maxY = 0;
 
-  const padX = 130, padY = 200;
-  let maxX = 0, maxY = 0;
-
-  for (let q=1; q<=5; q++){
-    const hq = heights[q-1];
-    for (let r=1; r<=hq; r++){
-      const id = `C${q}R${r}`;
-      let cx = padX + 1.5*S*(q-1);
-      let cy = padY + rt3*S*((r-1) + 0.5*((q-1)%2));
-      // Push columns 2 and 4 UP by one hex height
-      if (q===2 || q===4){
-        cy -= rt3*S;
+    for (let q=1; q<=5; q++){
+      const hq = heights[q-1];
+      for (let r=1; r<=hq; r++){
+        const id = `C${q}R${r}`;
+        let cx = padX + 1.5*S*(q-1);
+        let cy = padY + rt3*S*((r-1) + 0.5*((q-1)%2));
+        if (q===2 || q===4){ cy -= rt3*S; }
+        centers[id] = { x: cx, y: cy };
+        cells[id] = cells[id] || { id, col: q, row: r };
+        cellList.push(id);
+        if (cx>maxX) maxX=cx; if (cy>maxY) maxY=cy;
       }
-      centers[id] = { x: cx, y: cy };
-      cells[id] = cells[id] || { id, col: q, row: r };
-      cellList.push(id);
-      if (cx>maxX) maxX=cx; if (cy>maxY) maxY=cy;
     }
+
+    const pad = S*2;
+    const width  = Math.max(1200, Math.ceil(maxX + pad));
+    const height = Math.max(900,  Math.ceil(maxY + pad));
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width',  Math.min(1800, width));
+    svg.setAttribute('height', Math.min(1200, height));
+
+    return { width, height };
   }
 
-  const pad = S*2;
-  const width  = Math.max(1200, Math.ceil(maxX + pad));
-  const height = Math.max(900,  Math.ceil(maxY + pad));
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.setAttribute('width',  Math.min(1800, width));
-  svg.setAttribute('height', Math.min(1200, height));
-
-  return { width, height };
-}
-
-
-
-  // Build edges graph: midpoints between neighboring hex centers (edge-sharing)
-  const edges = {}; // id -> {id,pos,neighbors:[]}
-  function addNode(id,pos){ if(!edges[id]) edges[id] = { id, pos:{...pos}, neighbors:[] }; return edges[id]; }
-  function connect(a,b){ if(!a.neighbors.includes(b.id)) a.neighbors.push(b.id); if(!b.neighbors.includes(a.id)) b.neighbors.push(a.id); }
-
+  const edges = {};
   function hexPolygon(center, R=size){
-  const pts=[];
-  for (let i=0;i<6;i++){
-    const ang = (Math.PI/3)*i; // flat-top
-    pts.push([center.x + R*Math.cos(ang), center.y + R*Math.sin(ang)]);
-  }
-  return pts;
-}
-
-
-function buildGraph(){
-  // Build a vertex graph: nodes at hex *corners*; edges along hex sides (vertex-to-vertex).
-  // Reset edges
-  for (const k of Object.keys(edges)) delete edges[k];
-
-  // Dedup helper: bucket coordinates to merge shared vertices between neighboring hexes
-  const nodeMap = new Map();
-  const getKey = (x,y) => `${Math.round(x/0.75)}:${Math.round(y/0.75)}`;
-  const getNode = (x,y) => {
-    const k = getKey(x,y);
-    if (!nodeMap.has(k)){
-      const id = `v${nodeMap.size.toString().padStart(4,'0')}`;
-      nodeMap.set(k, id);
-      edges[id] = { id, pos: {x,y}, neighbors: [] };
-    }
-    return edges[nodeMap.get(k)];
-  };
-  const connect = (a,b) => {
-    if (a.id===b.id) return;
-    if (!a.neighbors.includes(b.id)) a.neighbors.push(b.id);
-    if (!b.neighbors.includes(a.id)) b.neighbors.push(a.id);
-  };
-
-  // For each hex, add its 6 vertices and connect a 6-cycle
-  for (const id of Object.keys(centers)){
-    const verts = hexPolygon(centers[id], size); // [[x,y],...]
-    const nodes = verts.map(([x,y]) => getNode(x,y));
+    const pts=[];
     for (let i=0;i<6;i++){
-      const a = nodes[i], b = nodes[(i+1)%6];
-      connect(a,b);
+      const ang = (Math.PI/3)*i;
+      pts.push([center.x + R*Math.cos(ang), center.y + R*Math.sin(ang)]);
+    }
+    return pts;
+  }
+  function buildGraph(){
+    for (const k of Object.keys(edges)) delete edges[k];
+    const nodeMap = new Map();
+    const getKey = (x,y) => `${Math.round(x/0.75)}:${Math.round(y/0.75)}`;
+    const getNode = (x,y) => {
+      const k = getKey(x,y);
+      if (!nodeMap.has(k)){
+        const id = `v${nodeMap.size.toString().padStart(4,'0')}`;
+        nodeMap.set(k, id);
+        edges[id] = { id, pos: {x,y}, neighbors: [] };
+      }
+      return edges[nodeMap.get(k)];
+    };
+    const connect = (a,b) => {
+      if (a.id===b.id) return;
+      if (!a.neighbors.includes(b.id)) a.neighbors.push(b.id);
+      if (!b.neighbors.includes(a.id)) b.neighbors.push(a.id);
+    };
+    for (const id of Object.keys(centers)){
+      const verts = hexPolygon(centers[id], size);
+      const nodes = verts.map(([x,y]) => getNode(x,y));
+      for (let i=0;i<6;i++){
+        const a = nodes[i], b = nodes[(i+1)%6];
+        connect(a,b);
+      }
     }
   }
-}
-// ---- Place board ----
 
   const dims = placeCells();
   buildGraph();
 
-  
-// Pawn placement: place 4 Gold on top vertices, 4 Silver on bottom vertices
-const pawns = {};
-let oid=0,bid=0;
+  // Pawn placement (as-is)
+  const pawns = {};
+  let oid=0,bid=0;
+  const allNodes = Object.values(edges);
+  const minY = Math.min(...allNodes.map(n=>n.pos.y));
+  const maxY = Math.max(...allNodes.map(n=>n.pos.y));
+  function getExtremeVertices(targetY, count){
+    const band = allNodes.filter(n => Math.abs(n.pos.y - targetY) < 20);
+    band.sort((a,b)=>a.pos.x-b.pos.x);
+    return band.slice(0,count);
+  }
+  const topVerts = getExtremeVertices(minY,4);
+  const botVerts = getExtremeVertices(maxY,4);
+  for (const n of topVerts){ const id = `O${oid++}`; pawns[id] = { id, owner:'ORANGE', edge:n.id }; }
+  for (const n of botVerts){ const id = `B${bid++}`; pawns[id] = { id, owner:'BLUE', edge:n.id }; }
 
-// Find extreme Y vertices
-const allNodes = Object.values(edges);
-const minY = Math.min(...allNodes.map(n=>n.pos.y));
-const maxY = Math.max(...allNodes.map(n=>n.pos.y));
-
-// Get 4 closest vertices to left→right order at minY and maxY
-function getExtremeVertices(targetY, count){
-  const band = allNodes.filter(n => Math.abs(n.pos.y - targetY) < 20);
-  // sort left-to-right
-  band.sort((a,b)=>a.pos.x-b.pos.x);
-  return band.slice(0,count);
-}
-const topVerts = getExtremeVertices(minY,4);
-const botVerts = getExtremeVertices(maxY,4);
-
-// Assign pawns
-for (const n of topVerts){
-  const id = `O${oid++}`;
-  pawns[id] = { id, owner:'ORANGE', edge:n.id };
-}
-for (const n of botVerts){
-  const id = `B${bid++}`;
-  pawns[id] = { id, owner:'BLUE', edge:n.id };
-}
- 
-// --- Game-ish state ---
-
+  // --- Game-ish state ---
   const MP_MAX = 2;
+
+  // (2) logging helper
+  function logEvent(text){
+    state.log.push({ t: Date.now(), text });
+  }
+
   const state = {
-  placedRunes: [],
+    placedRunes: [],
     players: {
       ORANGE: { color:'ORANGE', pawns: Object.keys(pawns).filter(id=>id.startsWith('O')), deck: [], hand: [], discard: [], timeMs: 10*60*1000, name:'Gold' , mp: MP_MAX, mpMax: MP_MAX},
       BLUE:   { color:'BLUE',   pawns: Object.keys(pawns).filter(id=>id.startsWith('B')), deck: [], hand: [], discard: [], timeMs: 10*60*1000, name:'Silver'   , mp: MP_MAX, mpMax: MP_MAX},
     },
     turn: 'ORANGE',
+    gameStarted: false, // (5.1)
     log: [{ t: Date.now(), text: 'v11 honeycomb ready. Orange to move.' }],
   };
 
@@ -319,23 +307,24 @@ for (const n of botVerts){
   const statOpp = document.getElementById('stat-deck-opp');
   const handOwnerLabel = document.getElementById('hand-owner');
 
+  // Populate ONLY Orange gallery (6.1)
   for (let i=0;i<24;i++){
     const o = document.createElement('div'); o.className='card cardTall gold'; o.textContent=ELDER_24[i].sym; o.title=ELDER_24[i].code; galleryO.appendChild(o);
   }
-  for (let i=0;i<24;i++){
-    const b = document.createElement('div'); b.className='card cardTall silver'; b.textContent=ELDER_24[i].sym; b.title=ELDER_24[i].code; galleryB.appendChild(b);
-  }
+  // Removed Silver gallery population per spec
+  // for (let i=0;i<24;i++){
+  //   const b = document.createElement('div'); b.className='card cardTall silver'; b.textContent=ELDER_24[i].sym; b.title=ELDER_24[i].code; galleryB.appendChild(b);
+  // }
 
   function polyPoints(center,R=size){
-  const pts=[];
-  for (let i=0;i<6;i++){
-    const ang = (Math.PI/3)*i; // flat-top
-    pts.push(`${center.x + R*Math.cos(ang)},${center.y + R*Math.sin(ang)}`);
+    const pts=[];
+    for (let i=0;i<6;i++){
+      const ang = (Math.PI/3)*i;
+      pts.push(`${center.x + R*Math.cos(ang)},${center.y + R*Math.sin(ang)}`);
+    }
+    return pts.join(' ');
   }
-  return pts.join(' ');
-}
 
-// Build neighbor visualization (optional), place runes, pawns, drag/snap like before
   const nodes = edges; // alias
 
   function svgPoint(evt){
@@ -408,8 +397,6 @@ for (const n of botVerts){
       }
     }
 
-    
-    
     /*__PERSISTED_RUNES__*/
     if (Array.isArray(state.placedRunes)){
       state.placedRunes.forEach((pr, i) => {
@@ -420,13 +407,19 @@ for (const n of botVerts){
         const angle = (pr.angle || 0);
         g.setAttribute('transform', `rotate(${angle} ${ctr.x} ${ctr.y})`);
         g.style.cursor = 'pointer';
-        g.addEventListener('click', () => {
-          try{
-            const item = state.placedRunes[i];
-            item.angle = ((item.angle||0) + 90) % 360;
-            rerender();
-          }catch(e){}
-        });
+
+        // (3.1) replace rotate-only handler with effect/recharge handler
+        g.addEventListener('click', (ev) => { handleRuneClick(i, ev); });
+
+        // (3.3) gate interaction by owner/turn
+        const isMyTurn = (state.turn === pr.owner);
+        if (!isMyTurn){
+          g.style.pointerEvents = 'none';
+          g.style.opacity = '0.8';
+        } else {
+          g.style.pointerEvents = 'auto';
+        }
+
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
         rect.setAttribute('x', ctr.x-24); rect.setAttribute('y', ctr.y-34);
         rect.setAttribute('width','48'); rect.setAttribute('height','68'); rect.setAttribute('rx','5');
@@ -434,6 +427,10 @@ for (const n of botVerts){
         const silver = getComputedStyle(document.documentElement).getPropertyValue('--silver').trim() || '#C0C0C8';
         rect.setAttribute('fill', pr.owner==='ORANGE'? gold : silver);
         rect.setAttribute('stroke','#333'); rect.setAttribute('opacity','0.95');
+
+        // subtle exhausted tint (visual hint)
+        if (pr.exhausted) rect.setAttribute('opacity','0.75');
+
         const t = document.createElementNS('http://www.w3.org/2000/svg','text');
         t.setAttribute('x', ctr.x); t.setAttribute('y', ctr.y+8);
         t.setAttribute('text-anchor','middle'); t.setAttribute('font-size','26');
@@ -443,7 +440,8 @@ for (const n of botVerts){
         svg.appendChild(g);
       });
     }
-// pawns
+
+    // pawns
     for (const p of Object.values(pawns)){
       const n = nodeForPawn(p.id);
       const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
@@ -489,14 +487,12 @@ for (const n of botVerts){
     deckMe.textContent = ''+state.players[me].deck.length;
     discardMe.textContent = ''+state.players[me].discard.length;
     deckOpp.textContent = ''+state.players[opp].deck.length;
-    // Blend discard with my color, ensure opp deck stays neutral
     statDiscard.classList.remove('statGold','statSilver');
     statOpp.classList.remove('statGold','statSilver');
     if (me==='ORANGE'){ statDiscard.classList.add('statGold'); }
     else { statDiscard.classList.add('statSilver'); }
     logEl.innerHTML = state.log.map(l=>`<div>${new Date(l.t).toLocaleTimeString()} — ${l.text}</div>`).join('');
     logEl.scrollTop = logEl.scrollHeight;
-    // Magic points UI
     try{
       renderMPDots(document.getElementById('mp-me'), state.players[me].mp||0, state.players[me].mpMax||MP_MAX);
       renderMPDots(document.getElementById('mp-opp'), state.players[opp].mp||0, state.players[opp].mpMax||MP_MAX);
@@ -508,20 +504,22 @@ for (const n of botVerts){
 
   function rerender(){ renderBoard(); renderSidebar(); }
 
-/*__INIT_MV__*/
-try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.owner===cur)?1:0; }catch(e){}
-
+  /*__INIT_MV__*/
+  try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.owner===cur)?1:0; }catch(e){}
 
   // Dragging logic (pawns)
   function startPawnDrag(ev, pawnId){
+    // (5.6) Block when out of time
+    const me = state.turn;
+    if (state.gameStarted && (state.players[me].timeMs <= 0)) return;
 
-  // Block if pawn already moved or 4 moves staged
-  try{
-    const pid = typeof pawnId!=='undefined' ? pawnId : arguments[1];
-    const p = pawns && pawns[pid];
-    if ((pending.pawnMoves||[]).length >= 4) return;
-    if (p && (p.mv||0) <= 0) return;
-  }catch(e){}
+    // Block if pawn already moved or 4 moves staged
+    try{
+      const pid = typeof pawnId!=='undefined' ? pawnId : arguments[1];
+      const p = pawns && pawns[pid];
+      if ((pending.pawnMoves||[]).length >= 4) return;
+      if (p && (p.mv||0) <= 0) return;
+    }catch(e){}
 
     if (state.turn !== pawns[pawnId].owner) return;
     dragging = { kind: 'pawn', id: pawnId };
@@ -558,16 +556,17 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
 
   // Dragging logic (runes)
   function startRuneDrag(ev, cardId, owner){
-
-  /*__GATE_RUNE_BY_MP__*/
-  try{
+    // (5.6) Block when out of time
     const me = state.turn;
-    const curMp = (state.players[me].mp||0);
-    // Allow starting rune drag if: have at least 2 MP OR already have a pending rune (so you can replace it)
-    if (!(curMp >= 2 || pending.rune)){
-      return;
-    }
-  }catch(e){}    
+    if (state.gameStarted && (state.players[me].timeMs <= 0)) return;
+
+    /*__GATE_RUNE_BY_MP__*/
+    try{
+      const curMp = (state.players[me].mp||0);
+      if (!(curMp >= 2 || pending.rune)){
+        return;
+      }
+    }catch(e){}    
 
     if (state.turn !== owner) return;
     dragging = { kind:'rune', id: cardId, owner };
@@ -600,6 +599,77 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
     dragging = null; rerender();
   }
 
+  // (3.2) Rune click handling
+  function handleRuneClick(index, ev){
+    // (5.6) Block when out of time
+    if (state.gameStarted && state.players[state.turn].timeMs <= 0) return;
+
+    const rune = state.placedRunes[index];
+    if (!rune) return;
+
+    const currentPlayerKey = state.turn;
+    if (rune.owner !== currentPlayerKey) return;
+
+    const player = state.players[currentPlayerKey];
+    const card = cards[rune.cardId];
+    if (!card) return;
+
+    const effect = RUNE_EFFECTS[card.code];
+    const cost = effect ? (effect.costMp || 0) : 0;
+
+    if (rune.exhausted){
+      return handleRuneRecharge(rune, index, ev);
+    }
+
+    if (cost > 0 && (player.mp || 0) < cost){
+      logEvent(`${currentPlayerKey} tried to activate ${card.code} but lacks magic.`);
+      return;
+    }
+
+    if (cost > 0) player.mp -= cost;
+
+    if (effect && typeof effect.activate === 'function'){
+      effect.activate(state, {
+        rune,
+        placedIndex: index,
+        player,
+        playerKey: currentPlayerKey,
+        pawns,
+        nodes,
+        centers,
+        log: logEvent,
+        svg
+      });
+    } else {
+      logEvent(`${currentPlayerKey} activated ${card.code} at ${rune.cellId}.`);
+    }
+
+    rune.exhausted = true;
+    rune.angle = ((rune.angle || 0) + 90) % 360;
+
+    rerender();
+  }
+
+  // (4.1) Recharge exhausted rune for 1 MP
+  function handleRuneRecharge(rune, index, ev){
+    const currentPlayerKey = state.turn;
+    if (rune.owner !== currentPlayerKey) return;
+
+    const player = state.players[currentPlayerKey];
+    if ((player.mp || 0) < 1){
+      logEvent(`${currentPlayerKey} tried to recharge ${cards[rune.cardId].code} but has no magic.`);
+      return;
+    }
+
+    player.mp -= 1;
+    rune.exhausted = false;
+    rune.angle = 0;
+
+    logEvent(`${currentPlayerKey} recharged ${cards[rune.cardId].code} at ${rune.cellId}.`);
+
+    rerender();
+  }
+
   // Commit turn
   function endTurn(){
     const me = state.turn;
@@ -618,10 +688,16 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
       if (occupied.has(m.to) && !pending.pawnMoves.some(x=>pawns[x.pawnId].edge===m.to)) return;
     }
     for (const m of pending.pawnMoves){ pawns[m.pawnId].edge = m.to; delete previewEdges[m.pawnId]; }
-    // Persist rune placement into game state
+    // Persist rune placement into game state (2.2)
     if (pending.rune && pending.rune.cardId && pending.rune.cellId){
       const meOwner = state.turn;
-      state.placedRunes.push({ cardId: pending.rune.cardId, cellId: pending.rune.cellId, owner: meOwner });
+      state.placedRunes.push({
+        cardId: pending.rune.cardId,
+        cellId: pending.rune.cellId,
+        owner: meOwner,
+        angle: 0,
+        exhausted: false
+      });
       try {
         const h = state.players[meOwner].hand;
         state.players[meOwner].hand = h.filter(id => id !== pending.rune.cardId);
@@ -629,15 +705,24 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
     }
 
     if (pending.rune){ const hand = state.players[me].hand; state.players[me].hand = hand.filter(id=>id!==pending.rune.cardId); }
-    const now = Date.now(); const elapsed = now - lastTurnAt; state.players[me].timeMs = Math.max(0, state.players[me].timeMs - elapsed); lastTurnAt = now;
+
+    // (5.5) time handling
+    const now = Date.now();
+    if (state.gameStarted){
+      const elapsed = now - lastTurnAt;
+      state.players[me].timeMs = Math.max(0, state.players[me].timeMs - elapsed);
+    }
+    lastTurnAt = now;
     state.turn = me==='ORANGE'?'BLUE':'ORANGE';
+
     // Magic points reset each new turn
     resetAllMagic();
     // Reset per-pawn mv for new player
     try{ const cur = state.turn; for (const p of Object.values(pawns)){ p.mv = (p.owner===cur)?1:0; } }catch(e){}
 
     const runeText = pending.rune ? ` and placed ${cards[pending.rune.cardId].code} on ${pending.rune.cellId}` : '';
-    state.log.push({ t: now, text: `${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.` });
+    logEvent(`${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.`);
+
     pending.pawnMoves = []; safeClearPendingRune(); pending.runeMpSpent = false; dragPreviewTarget=null; rerender(); updateClocks();
   }
 
@@ -650,14 +735,48 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
   const cO = document.getElementById('clock-orange'), cB = document.getElementById('clock-blue');
   const fmt = ms => { const s=Math.max(0,Math.floor(ms/1000)); const m=Math.floor(s/60), ss=(s%60).toString().padStart(2,'0'); return `${m}:${ss}`; };
   function updateClocks(){ cO.textContent = fmt(state.players.ORANGE.timeMs); cB.textContent = fmt(state.players.BLUE.timeMs); }
+
+  // (5.4) only *display* ticking when gameStarted
   setInterval(()=>{
-    const now = Date.now(); const me = state.turn; const elapsed = now - lastTurnAt;
-    const tO = me==='ORANGE' ? state.players.ORANGE.timeMs - elapsed : state.players.ORANGE.timeMs;
-    const tB = me==='BLUE'   ? state.players.BLUE.timeMs   - elapsed : state.players.BLUE.timeMs;
+    const me = state.turn;
+    const now = Date.now();
+    let tO = state.players.ORANGE.timeMs;
+    let tB = state.players.BLUE.timeMs;
+    if (state.gameStarted){
+      const elapsed = now - lastTurnAt;
+      if (me === 'ORANGE') tO = Math.max(0, tO - elapsed);
+      else tB = Math.max(0, tB - elapsed);
+    }
     cO.textContent = fmt(tO); cB.textContent = fmt(tB);
   }, 250);
 
+  // (5.3) Start Game handler
+  function startGame(){
+    const baseTime = 10 * 60 * 1000;
+    state.players.ORANGE.timeMs = baseTime;
+    state.players.BLUE.timeMs = baseTime;
+
+    state.turn = 'ORANGE';
+    lastTurnAt = Date.now();
+    state.gameStarted = true;
+
+    resetAllMagic();
+
+    try {
+      const cur = state.turn;
+      for (const p of Object.values(pawns)) {
+        p.mv = (p.owner === cur) ? 1 : 0;
+      }
+    } catch (e) {}
+
+    logEvent('Game started. ORANGE to move.');
+    rerender();
+    updateClocks();
+  }
+  document.getElementById('startGame').addEventListener('click', startGame);
+
   rerender(); updateClocks();
+
   function undoLast(){
     if (pending.rune){
       /*__UNDO_RUNE_MP__*/
@@ -678,150 +797,10 @@ try{ const cur = state.turn; for (const p of Object.values(pawns)) p.mv = (p.own
 
 <!-- SAFE HOOK: persistent runes + per-pawn move limit -->
 <script>
-(function(){
-  function ready(){
-    return typeof window.state==='object' && typeof window.pending==='object' &&
-           typeof window.centers==='object' && typeof window.cards==='object' &&
-           typeof window.rerender==='function' &&
-           typeof window.startPawnDrag==='function' &&
-           typeof window.endPawnDrag==='function' &&
-           typeof window.endTurn==='function' &&
-           document.getElementById('board');
-  }
-  function init(){
-    if (!ready()){ requestAnimationFrame(init); return; }
-    const svg = document.getElementById('board');
-    window.boardRunes = window.boardRunes || []; // [{cardId, cellId, owner}]
-
-    // Helper: remove previously drawn persisted runes
-    function clearPersisted(){
-      for (const el of svg.querySelectorAll('.persisted-rune')) el.remove();
-    }
-    // Helper: draw one persisted rune using existing style
-    function drawPersistedRune(cx, cy, isOrange, sym){
-      const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
-      r.setAttribute('x', cx-24); r.setAttribute('y', cy-34);
-      r.setAttribute('width','48'); r.setAttribute('height','68'); r.setAttribute('rx','5');
-      const gold = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim() || '#C8A949';
-      const silver = getComputedStyle(document.documentElement).getPropertyValue('--silver').trim() || '#C0C0C8';
-      r.setAttribute('fill', isOrange? gold : silver);
-      r.setAttribute('stroke','#333'); r.setAttribute('opacity','0.95');
-      const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-      t.setAttribute('x', cx); t.setAttribute('y', cy+8);
-      t.setAttribute('text-anchor','middle'); t.setAttribute('font-size','26');
-      t.setAttribute('fill', isOrange? '#2f2317':'#1f2430'); t.textContent = sym;
-      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-      g.appendChild(r); g.appendChild(t);
-      g.classList.add('persisted-rune');
-      svg.appendChild(g);
-      return g;
-    }
-    // Coords helper
-    function svgPoint(evt){
-      const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
-      const m = svg.getScreenCTM().inverse(); const p = pt.matrixTransform(m);
-      return { x: p.x, y: p.y };
-    }
-    function nearestCellId(pt){
-      let best=null, bestD=Infinity;
-      for (const [id,c] of Object.entries(window.centers)){
-        const dx=c.x-pt.x, dy=c.y-pt.y, d=dx*dx+dy*dy;
-        if (d<bestD){ bestD=d; best=id; }
-      }
-      return best;
-    }
-
-    // Wrap rerender: after base draws, paint persisted runes and enable owner-drag
-    /* SAFE overlay rerender wrapper disabled */
-try{ svg.releasePointerCapture(eu.pointerId); }catch(e){}
-                svg.removeEventListener('pointerup', onUp);
-                try{ window.rerender(); }catch(e){}
-              }
-              svg.addEventListener('pointerup', onUp, { once:true });
-              ev.stopPropagation();
-            });
-          }
-        }
-      }catch(e){}
-      return res;
-    };
-
-    // Persist rune before base endTurn clears pending.rune
-    /* SAFE overlay endTurn wrapper disabled */
-catch(e){}
-          // push to persistent list
-          window.boardRunes.push({ cardId: pr.cardId, cellId: pr.cellId, owner: me });
-        }
-      }catch(e){}
-      const res = _endTurn.apply(this, arguments);
-      try{ window.rerender(); }catch(e){}
-      return res;
-    };
-
-    // -------- per-pawn movement cap (mv) --------
-    // Initialize mv if missing
-    try{
-      for (const p of Object.values(window.pawns||{})){
-        if (typeof p.mv==='undefined') p.mv = (p.owner===window.state.turn?1:0);
-      }
-    }catch(e){}
-    // Block dragging if mv<=0
-    /* disabled SAFE startPawnDrag overlay */
-    /* disabled */ function _noopStartPawnDrag (ev, pawnId){
-      const p = window.pawns?.[pawnId];
-      if (p && p.mv<=0) return;
-      return _startPawnDrag.apply(this, arguments);
-    };
-    // When a move is staged, set mv=0 for that pawn
-    /* disabled SAFE endPawnDrag overlay */
-    /* disabled */ function _noopEndPawnDrag (){
-      const before = new Set((window.pending?.pawnMoves||[]).map(m=>m.pawnId));
-      const r = _endPawnDrag.apply(this, arguments);
-      try{
-        const after = new Set((window.pending?.pawnMoves||[]).map(m=>m.pawnId));
-        for (const pid of after){
-          if (!before.has(pid) && window.pawns?.[pid]) window.pawns[pid].mv = 0;
-        }
-      }catch(e){}
-      return r;
-    };
-    // After turn ends, reset mv only for new player's pawns
-    const _endTurn2 = window.endTurn;
-    window.endTurn = function(){
-      const res = _endTurn2.apply(this, arguments);
-      try{
-        const cur = window.state?.turn;
-        if (cur && window.pawns){
-          for (const p of Object.values(window.pawns)){
-            p.mv = (p.owner===cur)?1:0;
-          }
-        }
-      }catch(e){}
-      try{ window.rerender(); }catch(e){}
-      return res;
-    };
-
-    // First refresh
-    try{ window.rerender(); }catch(e){}
-  }
-  init();
-  function undoLast(){
-    if (pending.rune){
-      /*__UNDO_RUNE_MP__*/
-      try{ if (pending.runeMpSpent){ const me = state.turn; state.players[me].mp = state.players[me].mpMax || MP_MAX; pending.runeMpSpent = false; } }catch(e){}
-      pending.rune = null;
-      rerender(); return;
-    }
-    if (pending.pawnMoves && pending.pawnMoves.length>0){
-      const last = pending.pawnMoves.pop();
-      try{ delete previewEdges[last.pawnId]; }catch(e){}
-      try{ if (pawns[last.pawnId]) pawns[last.pawnId].mv = 1; }catch(e){}
-      rerender(); return;
-    }
-  }
-
-})();
+/* Intentionally left as-is but inert; authoritative logic is in the main script per instructions. */
+(function(){})();
 </script>
 
 </body>
 </html>
+
