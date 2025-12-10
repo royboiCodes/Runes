@@ -1,4 +1,4 @@
-<!-- /mnt/data/runez_v11_persistent_runes_and_mv_MAGIC_FULLTURN_MP_COST_UNDOFIX_ROTATE_MIN (1).html -->
+<!-- /mnt/data/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -254,9 +254,15 @@
   }
   const topVerts = getExtremeVertices(minY,4);
   const botVerts = getExtremeVertices(maxY,4);
-  // Store startEdge for reset on Start Game
-  for (const n of topVerts){ const id = `O${oid++}`; pawns[id] = { id, owner:'ORANGE', edge:n.id, startEdge:n.id }; }
-  for (const n of botVerts){ const id = `B${bid++}`; pawns[id] = { id, owner:'BLUE', edge:n.id, startEdge:n.id }; }
+  // Store startEdge for reset on Start Game + capture flags
+  for (const n of topVerts){
+    const id = `O${oid++}`;
+    pawns[id] = { id, owner:'ORANGE', edge:n.id, startEdge:n.id, captured:false, skipOwnTurns:0 };
+  }
+  for (const n of botVerts){
+    const id = `B${bid++}`;
+    pawns[id] = { id, owner:'BLUE', edge:n.id, startEdge:n.id, captured:false, skipOwnTurns:0 };
+  }
 
   const MP_MAX = 2;
 
@@ -271,6 +277,7 @@
     turn: 'ORANGE',
     gameStarted: false,
     log: [{ t: Date.now(), text: 'v11 honeycomb ready. Orange to move.' }],
+    turnCount: 0
   };
 
   // Decks/hands
@@ -288,7 +295,7 @@
   function spendMagic(who, amt=1){ const p = state.players[who]; if (!p) return false; if ((p.mp||0) < amt) return false; p.mp -= amt; rerender(); return true; }
   function resetAllMagic(){ state.players.ORANGE.mp = state.players.ORANGE.mpMax || MP_MAX; state.players.BLUE.mp   = state.players.BLUE.mpMax   || MP_MAX; }
 
-  const pending = { pawnMoves: [], rune: null, runeMpSpent: false };
+  const pending = { pawnMoves: [], rune: null, runeMpSpent: false, captures: [] };
   function safeClearPendingRune(){ try{ if (pending.rune && pending.runeMpSpent){ const me = state.turn; state.players[me].mp = state.players[me].mpMax || MP_MAX; pending.runeMpSpent = false; } }catch(e){} pending.rune = null; }
   const previewEdges = {};
   const pendingBadge = document.getElementById('pendingBadge');
@@ -327,7 +334,11 @@
     return { x: p.x, y: p.y };
   }
 
-  function nodeForPawn(pawnId){ return nodes[ previewEdges[pawnId] || pawns[pawnId].edge ]; }
+  function nodeForPawn(pawnId){
+    const edgeId = previewEdges[pawnId] || pawns[pawnId]?.edge;
+    if (!edgeId) return null; // why: captured/off-board safe guard
+    return nodes[edgeId];
+  }
   function currentEdgeIdForPawn(pawnId){ return previewEdges[pawnId] || pawns[pawnId].edge; } // (2)
 
   let dragging = null; // {kind:'pawn'|'rune', id, owner?}
@@ -352,6 +363,8 @@
     const result = new Set();
     for (const pid of player.pawns || []){
       const edgeId = currentEdgeIdForPawn(pid);
+      const pawn = pawns[pid];
+      if (!pawn || pawn.captured || !edgeId) continue; // skip captured/off-board
       const cellsForNode = nodeCells[edgeId] || [];
       for (const cellId of cellsForNode) result.add(cellId);
     }
@@ -410,11 +423,13 @@
     // highlights while dragging a pawn
     if (dragging?.kind==='pawn'){
       const p = pawns[dragging.id]; const n = nodeForPawn(p.id);
-      for (const nid of n.neighbors){
-        const nb = nodes[nid];
-        const hi = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        hi.setAttribute('cx', nb.pos.x); hi.setAttribute('cy', nb.pos.y); hi.setAttribute('r','14'); hi.setAttribute('class','hint');
-        svg.appendChild(hi);
+      if (n){ // guard if somehow off-board
+        for (const nid of n.neighbors){
+          const nb = nodes[nid];
+          const hi = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          hi.setAttribute('cx', nb.pos.x); hi.setAttribute('cy', nb.pos.y); hi.setAttribute('r','14'); hi.setAttribute('class','hint');
+          svg.appendChild(hi);
+        }
       }
     }
 
@@ -458,9 +473,11 @@
       });
     }
 
-    // pawns
+    // pawns (skip captured/off-board)
     for (const p of Object.values(pawns)){
+      if (p.captured || !p.edge) continue;
       const n = nodeForPawn(p.id);
+      if (!n) continue;
       const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
       let cx=n.pos.x, cy=n.pos.y;
       if (dragging?.kind==='pawn' && dragging.id===p.id){ cx=dragPoint.x; cy=dragPoint.y; }
@@ -533,6 +550,7 @@
       const p = pawns && pawns[pid];
       if ((pending.pawnMoves||[]).length >= 4) return;
       if (p && (p.mv||0) <= 0) return;
+      if (p && p.captured) return; // why: cannot drag captured pawn
     }catch(e){}
     if (state.turn !== pawns[pawnId].owner) return;
     dragging = { kind: 'pawn', id: pawnId };
@@ -546,6 +564,7 @@
   function onPawnMove(ev){
     dragPoint = svgPoint(ev);
     const pawn = pawns[dragging.id]; const fromNode = nodeForPawn(pawn.id);
+    if (!fromNode) return;
     let best=null, bestD=Infinity;
     for (const nid of fromNode.neighbors){ const n=nodes[nid]; const dx=n.pos.x-dragPoint.x, dy=n.pos.y-dragPoint.y; const d=dx*dx+dy*dy; if (d<bestD){bestD=d; best=nid;} }
     dragPreviewTarget = (best && bestD<70*70) ? best : null;
@@ -687,24 +706,120 @@
     rerender();
   }
 
-  // Commit turn
+  // ---- Respawn helpers ----
+  const START_VERTS = {
+    ORANGE: topVerts.map(v => v.id),
+    BLUE:   botVerts.map(v => v.id)
+  };
+  function respawnCapturedPawnsForCurrentPlayer(){
+    const me = state.turn;
+    const starts = START_VERTS[me] || [];
+    const occ = new Set(
+      Object.values(pawns)
+        .filter(p => !p.captured && p.edge)
+        .map(p => p.edge)
+    );
+
+    for (const p of Object.values(pawns)) {
+      if (p.owner !== me || !p.captured) continue;
+
+      if (p.skipOwnTurns > 0) {
+        p.skipOwnTurns -= 1;
+        continue; // still waiting
+      }
+
+      // Time to respawn
+      let target = null;
+      if (p.startEdge && !occ.has(p.startEdge)) {
+        target = p.startEdge;
+      } else {
+        for (const s of starts) {
+          if (!occ.has(s)) { target = s; break; }
+        }
+      }
+
+      if (!target) {
+        // No free starting spots – remain captured
+        continue;
+      }
+
+      // Place pawn on starting vertex
+      p.edge = target;
+      p.captured = false;
+      p.skipOwnTurns = 0;
+      occ.add(target);
+
+      // Respawning counts as this pawn's move this turn
+      p.mv = 0;
+
+      logEvent(`${me} pawn ${p.id} respawned at starting vertex ${target}.`);
+    }
+  }
+
+  // Commit turn (+30s bonus, capture, respawn)
   function endTurn(){
     const me = state.turn;
     if (pending.pawnMoves.length>4){ return; }
+
+    // Unique pawn per move
     const perPawn = new Set(pending.pawnMoves.map(m=>m.pawnId));
     if (perPawn.size !== pending.pawnMoves.length){ return; }
-    const dests=new Set();
+
+    // Build occupancy index excluding captured pawns
+    const nodeOccupants = {};
+    for (const p of Object.values(pawns)) {
+      if (!p.captured && p.edge) {
+        if (!nodeOccupants[p.edge]) nodeOccupants[p.edge] = [];
+        nodeOccupants[p.edge].push(p.id);
+      }
+    }
+
+    const capturesThisTurn = [];
+
+    // Validate staged moves with capture rules
     for (const m of pending.pawnMoves){
       const pawn = pawns[m.pawnId];
-      if (!pawn || pawn.owner!==me) return;
-      if (!nodes[pawn.edge].neighbors.includes(m.to)) return;
-      if (dests.has(m.to)) return; dests.add(m.to);
+      if (!pawn || pawn.owner !== me || pawn.captured) return;
+
+      const fromNode = pawn.edge;
+      const toNode = m.to;
+
+      if (!nodes[fromNode]?.neighbors.includes(toNode)) return;
+
+      // Current occupants on destination (alive only)
+      const occ = (nodeOccupants[toNode] || []).filter(pid => !pawns[pid].captured);
+      const sameColor = occ.filter(pid => pawns[pid].owner === me);
+      const enemy = occ.filter(pid => pawns[pid].owner !== me);
+
+      // Is same-color pawn at dest also moving away?
+      const alsoMovingAway = pending.pawnMoves.some(x => x.pawnId !== m.pawnId && pawns[x.pawnId].edge === toNode);
+
+      // Forbid stacking on own pawn unless that pawn is leaving
+      if (sameColor.length > 0 && !alsoMovingAway) {
+        return;
+      }
+
+      // Mark enemy for capture
+      if (enemy.length > 0) {
+        for (const eid of enemy) {
+          capturesThisTurn.push({ victimId: eid, byId: m.pawnId, dest: toNode });
+        }
+      }
+
+      // Virtually move the attacker for subsequent validations
+      nodeOccupants[toNode] = nodeOccupants[toNode] || [];
+      if (!nodeOccupants[toNode].includes(m.pawnId)) {
+        nodeOccupants[toNode].push(m.pawnId);
+      }
+      if (nodeOccupants[fromNode]) {
+        nodeOccupants[fromNode] = nodeOccupants[fromNode].filter(pid => pid !== m.pawnId);
+      }
     }
-    const occupied = new Set(Object.values(pawns).map(p=>p.edge));
-    for (const m of pending.pawnMoves){
-      if (occupied.has(m.to) && !pending.pawnMoves.some(x=>pawns[x.pawnId].edge===m.to)) return;
-    }
+
+    // Commit moves
     for (const m of pending.pawnMoves){ pawns[m.pawnId].edge = m.to; delete previewEdges[m.pawnId]; }
+
+    // Persist rune placement (unchanged)
     if (pending.rune && pending.rune.cardId && pending.rune.cellId){
       const meOwner = state.turn;
       state.placedRunes.push({
@@ -719,24 +834,62 @@
         state.players[meOwner].hand = h.filter(id => id !== pending.rune.cardId);
       } catch(e) {}
     }
-
     if (pending.rune){ const hand = state.players[me].hand; state.players[me].hand = hand.filter(id=>id!==pending.rune.cardId); }
 
+    // Apply captures after all movement is committed
+    pending.captures = capturesThisTurn || [];
+    for (const c of pending.captures) {
+      const victim = pawns[c.victimId];
+      if (!victim || victim.captured) continue;
+
+      victim.captured = true;
+      victim.edge = null;            // off-board
+      victim.skipOwnTurns = 1;       // skip next own turn before respawn
+
+      logEvent(`${victim.owner} pawn ${victim.id} was captured by ${pawns[c.byId].owner} pawn ${c.byId}.`);
+    }
+
+    // Time handling – AFTER subtracting elapsed, THEN give +30s, BEFORE switching turn
     const now = Date.now();
     if (state.gameStarted){
       const elapsed = now - lastTurnAt;
       state.players[me].timeMs = Math.max(0, state.players[me].timeMs - elapsed);
+      const BONUS = 30 * 1000; // 30 seconds in ms
+      state.players[me].timeMs += BONUS;
     }
     lastTurnAt = now;
-    state.turn = me==='ORANGE'?'BLUE':'ORANGE';
 
+    // Switch turn
+    state.turn = me==='ORANGE'?'BLUE':'ORANGE';
+    state.turnCount += 1;
+
+    // Magic reset
     resetAllMagic();
-    try{ const cur = state.turn; for (const p of Object.values(pawns)){ p.mv = (p.owner===cur)?1:0; } }catch(e){}
+
+    // Respawn logic for the player whose turn begins now
+    respawnCapturedPawnsForCurrentPlayer();
+
+    // Set mv for new turn (respect mv=0 for any just-respawned pawn)
+    try{
+      const cur = state.turn;
+      for (const p of Object.values(pawns)){
+        if (p.owner === cur){
+          if (typeof p.mv === 'undefined' || p.mv > 0) p.mv = 1;
+        } else {
+          p.mv = 0;
+        }
+      }
+    }catch(e){}
 
     const runeText = pending.rune ? ` and placed ${cards[pending.rune.cardId].code} on ${pending.rune.cellId}` : '';
     logEvent(`${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.`);
 
-    pending.pawnMoves = []; safeClearPendingRune(); pending.runeMpSpent = false; dragPreviewTarget=null; rerender(); updateClocks();
+    pending.pawnMoves = [];
+    safeClearPendingRune();
+    pending.runeMpSpent = false;
+    pending.captures = [];
+    dragPreviewTarget=null;
+    rerender(); updateClocks();
   }
 
   document.getElementById('undoBtn').addEventListener('click', undoLast);
@@ -769,15 +922,20 @@
 
     // Reset pieces to starting positions (pawns only; minimal per spec)
     for (const p of Object.values(pawns)){
-      if (p.startEdge) p.edge = p.startEdge; // why: guarantee clean start state
+      // why: guarantee clean start state including captures
+      p.captured = false;
+      p.skipOwnTurns = 0;
+      if (p.startEdge) p.edge = p.startEdge;
       p.mv = (p.owner==='ORANGE') ? 1 : 0;
     }
     for (const k in previewEdges) delete previewEdges[k];
     pending.pawnMoves = [];
     safeClearPendingRune();
     pending.runeMpSpent = false;
+    pending.captures = [];
 
     state.turn = 'ORANGE';
+    state.turnCount = 0;
     lastTurnAt = Date.now();
     state.gameStarted = true;
 
