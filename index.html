@@ -912,36 +912,63 @@ respawnCapturedPawnsForCurrentPlayer();
     cO.textContent = fmt(tO); cB.textContent = fmt(tB);
   }, 250);
 
-  function startGame(){
-    const baseTime = 10 * 60 * 1000;
-    state.players.ORANGE.timeMs = baseTime;
-    state.players.BLUE.timeMs = baseTime;
+function startGame(){
+  const baseTime = 10 * 60 * 1000;
 
-    // Reset pieces to starting positions (pawns only; minimal per spec)
-    for (const p of Object.values(pawns)){
-      // why: guarantee clean start state including captures
-      p.captured = false;
-      p.skipOwnTurns = 0;
-      if (p.startEdge) p.edge = p.startEdge;
-      p.mv = (p.owner==='ORANGE') ? 1 : 0;
+  // --- 1. Reset clocks ---
+  state.players.ORANGE.timeMs = baseTime;
+  state.players.BLUE.timeMs   = baseTime;
+
+  // --- 2. Reset all pawns to starting vertices & clear capture state ---
+  for (const p of Object.values(pawns)){
+    p.captured = false;
+    p.skipOwnTurns = 0;
+    if (p.startEdge) {
+      p.edge = p.startEdge;   // back to original starting node
     }
-    for (const k in previewEdges) delete previewEdges[k];
-    pending.pawnMoves = [];
-    safeClearPendingRune();
-    pending.runeMpSpent = false;
-    pending.captures = [];
-
-    state.turn = 'ORANGE';
-    state.turnCount = 0;
-    lastTurnAt = Date.now();
-    state.gameStarted = true;
-
-    resetAllMagic();
-
-    logEvent('Game started. ORANGE to move. Pieces reset to starting vertices.');
-    rerender();
-    updateClocks();
   }
+
+  // --- 3. Clear all runes from the board + any pending rune ---
+  state.placedRunes = [];      // <- this was missing: clears board runes
+  safeClearPendingRune();      // clears pending.rune and refunds MP if needed
+
+  // --- 4. Reset hands / decks / discards ---
+  // Rebuild full hands from the global cards map
+  state.players.ORANGE.hand = Object.keys(cards).filter(id => id.startsWith('ORANGE-'));
+  state.players.BLUE.hand   = Object.keys(cards).filter(id => id.startsWith('BLUE-'));
+
+  state.players.ORANGE.deck    = [];
+  state.players.ORANGE.discard = [];
+  state.players.BLUE.deck      = [];
+  state.players.BLUE.discard   = [];
+
+  // --- 5. Clear any staged moves / previews / capture info ---
+  pending.pawnMoves    = [];
+  pending.runeMpSpent  = false;
+  pending.captures     = [];
+  for (const k in previewEdges) delete previewEdges[k];
+
+  // --- 6. Reset turn, magic, mv flags, and timing baseline ---
+  state.turn      = 'ORANGE';
+  state.turnCount = 0;
+  state.gameStarted = true;
+
+  // Full magic for both players
+  resetAllMagic();
+
+  // ORANGE pawns movable, BLUE pawns frozen at start
+  for (const p of Object.values(pawns)){
+    p.mv = (p.owner === 'ORANGE' && !p.captured) ? 1 : 0;
+  }
+
+  lastTurnAt = Date.now();
+
+  // --- 7. Log + redraw ---
+  logEvent('Game started. ORANGE to move. Board, pawns, runes, and hands reset.');
+  rerender();
+  updateClocks();
+}
+
   document.getElementById('startGame').addEventListener('click', startGame);
 
   rerender(); updateClocks();
