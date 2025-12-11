@@ -1,27 +1,31 @@
-
 <!-- Firebase (compat) + Realtime Database -->
 <script src="https://www.gstatic.com/firebasejs/12.6.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.6.0/firebase-database-compat.js"></script>
 
 <script>
+  // Your Firebase config – THESE are your real values
   const firebaseConfig = {
     apiKey: "AIzaSyBMjFIUqcAkUMiuUmaXk__F8SxAP7ZwTnU",
     authDomain: "runes-e8e13.firebaseapp.com",
-    databaseURL: "https://runes-e8e13-default-rtdb.firebaseio.com", // copy from Realtime DB if needed
+    databaseURL: "https://runes-e8e13-default-rtdb.firebaseio.com",
     projectId: "runes-e8e13",
     storageBucket: "runes-e8e13.firebasestorage.app",
     messagingSenderId: "623606408838",
     appId: "1:623606408838:web:74b5838a99d3f0cf905307"
+    // measurementId is optional for what we're doing, so we can skip it
   };
 
   // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
 
-  // Realtime Database handle
+  // Get a handle to the Realtime Database
   const db = firebase.database();
 
   // Tiny test write so we know it works
-  db.ref("test/hello").set({ from: "runez", time: Date.now() });
+  db.ref("test/hello").set({
+    from: "runez",
+    time: Date.now()
+  });
 </script>
 
 <!-- /mnt/data/index.html -->
