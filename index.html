@@ -406,6 +406,16 @@
         svg.appendChild(hint);
       }
     }
+    // show the rune following the pointer while dragging from hand
+if (dragging?.kind === 'rune') {
+  const card = cards[dragging.id];
+  if (card) {
+    const isOrange = (dragging.owner === 'ORANGE');
+    // draw the rune at the current dragPoint, like pawns do
+    drawRuneAt(dragPoint.x, dragPoint.y, isOrange, card.sym, 0.85);
+  }
+}
+
 
     // pending rune ghost
     if (pending.rune && centers[pending.rune.cellId]){
@@ -587,22 +597,29 @@
   }
 
   // Dragging logic (runes)
-  function startRuneDrag(ev, cardId, owner){
-    const me = state.turn;
-    if (state.gameStarted && (state.players[me].timeMs <= 0)) return;
-    try{
-      const curMp = (state.players[me].mp||0);
-      if (!(curMp >= 2 || pending.rune)){ return; }
-    }catch(e){}    
-    if (state.turn !== owner) return;
-    dragging = { kind:'rune', id: cardId, owner };
-    dragPoint = svgPoint(ev);
-    dragPreviewTarget = null;
-    svg.setPointerCapture(ev.pointerId);
-    svg.addEventListener('pointermove', onRuneMove);
-    svg.addEventListener('pointerup', endRuneDrag, { once: true });
-    rerender();
-  }
+function startRuneDrag(ev, cardId, owner){
+  const me = state.turn;
+  if (state.gameStarted && (state.players[me].timeMs <= 0)) return;
+  try{
+    const curMp = (state.players[me].mp||0);
+    if (!(curMp >= 2 || pending.rune)){ return; }
+  }catch(e){}
+  if (state.turn !== owner) return;
+
+  dragging = { kind:'rune', id: cardId, owner };
+  dragPoint = svgPoint(ev);
+  dragPreviewTarget = null;
+
+  // Prevent text selection / weird default behavior
+  ev.preventDefault();
+
+  // Use global listeners so drag works anywhere on the screen
+  window.addEventListener('pointermove', onRuneMove);
+  window.addEventListener('pointerup', endRuneDrag, { once: true });
+
+  rerender();
+}
+
   function onRuneMove(ev){
     dragPoint = svgPoint(ev);
     let best=null, bestD=Infinity;
@@ -612,9 +629,8 @@
     }
     dragPreviewTarget = best; renderBoard();
   }
-  function endRuneDrag(ev){
-    svg.releasePointerCapture(ev.pointerId);
-    svg.removeEventListener('pointermove', onRuneMove);
+function endRuneDrag(ev){
+    window.removeEventListener('pointermove', onRuneMove);
 
     if (dragPreviewTarget) {
       const ownerKey = dragging.owner;
@@ -634,8 +650,10 @@
       }
     }
 
-    dragging = null; rerender();
-  }
+    dragging = null;
+    rerender();
+}
+
 
   // Rune click handling
   function handleRuneClick(index, ev){
