@@ -859,27 +859,24 @@
     }
     lastTurnAt = now;
 
-    // Switch turn
-    state.turn = me==='ORANGE'?'BLUE':'ORANGE';
-    state.turnCount += 1;
+// Switch turn
+state.turn = me === 'ORANGE' ? 'BLUE' : 'ORANGE';
+state.turnCount += 1;
 
-    // Magic reset
-    resetAllMagic();
+// Magic reset
+resetAllMagic();
 
-    // Respawn logic for the player whose turn begins now
-    respawnCapturedPawnsForCurrentPlayer();
+// Set mv for new turn FIRST
+try {
+  const cur = state.turn;
+  for (const p of Object.values(pawns)) {
+    p.mv = (p.owner === cur && !p.captured) ? 1 : 0;
+  }
+} catch (e) {}
 
-    // Set mv for new turn (respect mv=0 for any just-respawned pawn)
-    try{
-      const cur = state.turn;
-      for (const p of Object.values(pawns)){
-        if (p.owner === cur){
-          if (typeof p.mv === 'undefined' || p.mv > 0) p.mv = 1;
-        } else {
-          p.mv = 0;
-        }
-      }
-    }catch(e){}
+// Respawn AFTER mv reset (respawn already sets p.mv = 0)
+respawnCapturedPawnsForCurrentPlayer();
+
 
     const runeText = pending.rune ? ` and placed ${cards[pending.rune.cardId].code} on ${pending.rune.cellId}` : '';
     logEvent(`${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.`);
