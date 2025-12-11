@@ -26,6 +26,50 @@
     from: "runez",
     time: Date.now()
   });
+  // All players in this room share the same game
+const roomId = "room1"; // later you can make this dynamic
+const gameRef = db.ref("games/" + roomId);
+  let isPushing = false; // avoid reacting to our own writes
+
+// Listen to changes from Firebase
+gameRef.on("value", function(snapshot) {
+  if (isPushing) return; // ignore our own update
+
+  const data = snapshot.val();
+  if (!data) return;
+
+  applyStateSnapshot(data);
+});
+
+
+// Helper: turn our local game state into a plain object for Firebase
+function makeStateSnapshot() {
+  return {
+    pawns: pawns,      // assuming you already have these globals
+    runes: runes,      // or whatever your rune state variable is called
+    state: {
+      turn: state.turn,
+      // add more fields if you want (clocks, scores, etc.)
+    }
+  };
+}
+
+// Helper: apply a state object from Firebase to our local game
+function applyStateSnapshot(snapshot) {
+  if (!snapshot) return;
+
+  if (snapshot.pawns) pawns = snapshot.pawns;
+  if (snapshot.runes) runes = snapshot.runes;
+  if (snapshot.state && typeof snapshot.state.turn !== "undefined") {
+    state.turn = snapshot.state.turn;
+  }
+
+  // Re-render the board with the new data
+  if (typeof rerender === "function") {
+    rerender();
+  }
+}
+
 </script>
 
 <!-- /mnt/data/index.html -->
@@ -805,137 +849,157 @@ function endRuneDrag(ev){
   }
 
   // Commit turn (+30s bonus, capture, respawn)
-  function endTurn(){
-    const me = state.turn;
-    if (pending.pawnMoves.length>4){ return; }
+function endTurn() {
+  const me = state.turn;
+  if (pending.pawnMoves.length > 4) { return; }
 
-    // Unique pawn per move
-    const perPawn = new Set(pending.pawnMoves.map(m=>m.pawnId));
-    if (perPawn.size !== pending.pawnMoves.length){ return; }
+  // Unique pawn per move
+  const perPawn = new Set(pending.pawnMoves.map(m => m.pawnId));
+  if (perPawn.size !== pending.pawnMoves.length) { return; }
 
-    // Build occupancy index excluding captured pawns
-    const nodeOccupants = {};
-    for (const p of Object.values(pawns)) {
-      if (!p.captured && p.edge) {
-        if (!nodeOccupants[p.edge]) nodeOccupants[p.edge] = [];
-        nodeOccupants[p.edge].push(p.id);
-      }
-    }
-
-    const capturesThisTurn = [];
-
-    // Validate staged moves with capture rules
-    for (const m of pending.pawnMoves){
-      const pawn = pawns[m.pawnId];
-      if (!pawn || pawn.owner !== me || pawn.captured) return;
-
-      const fromNode = pawn.edge;
-      const toNode = m.to;
-
-      if (!nodes[fromNode]?.neighbors.includes(toNode)) return;
-
-      // Current occupants on destination (alive only)
-      const occ = (nodeOccupants[toNode] || []).filter(pid => !pawns[pid].captured);
-      const sameColor = occ.filter(pid => pawns[pid].owner === me);
-      const enemy = occ.filter(pid => pawns[pid].owner !== me);
-
-      // Is same-color pawn at dest also moving away?
-      const alsoMovingAway = pending.pawnMoves.some(x => x.pawnId !== m.pawnId && pawns[x.pawnId].edge === toNode);
-
-      // Forbid stacking on own pawn unless that pawn is leaving
-      if (sameColor.length > 0 && !alsoMovingAway) {
-        return;
-      }
-
-      // Mark enemy for capture
-      if (enemy.length > 0) {
-        for (const eid of enemy) {
-          capturesThisTurn.push({ victimId: eid, byId: m.pawnId, dest: toNode });
-        }
-      }
-
-      // Virtually move the attacker for subsequent validations
-      nodeOccupants[toNode] = nodeOccupants[toNode] || [];
-      if (!nodeOccupants[toNode].includes(m.pawnId)) {
-        nodeOccupants[toNode].push(m.pawnId);
-      }
-      if (nodeOccupants[fromNode]) {
-        nodeOccupants[fromNode] = nodeOccupants[fromNode].filter(pid => pid !== m.pawnId);
-      }
-    }
-
-    // Commit moves
-    for (const m of pending.pawnMoves){ pawns[m.pawnId].edge = m.to; delete previewEdges[m.pawnId]; }
-
-    // Persist rune placement (unchanged)
-    if (pending.rune && pending.rune.cardId && pending.rune.cellId){
-      const meOwner = state.turn;
-      state.placedRunes.push({
-        cardId: pending.rune.cardId,
-        cellId: pending.rune.cellId,
-        owner: meOwner,
-        angle: 0,
-        exhausted: false
-      });
-      try {
-        const h = state.players[meOwner].hand;
-        state.players[meOwner].hand = h.filter(id => id !== pending.rune.cardId);
-      } catch(e) {}
-    }
-    if (pending.rune){ const hand = state.players[me].hand; state.players[me].hand = hand.filter(id=>id!==pending.rune.cardId); }
-
-    // Apply captures after all movement is committed
-    pending.captures = capturesThisTurn || [];
-    for (const c of pending.captures) {
-      const victim = pawns[c.victimId];
-      if (!victim || victim.captured) continue;
-
-      victim.captured = true;
-      victim.edge = null;            // off-board
-      victim.skipOwnTurns = 1;       // skip next own turn before respawn
-
-      logEvent(`${victim.owner} pawn ${victim.id} was captured by ${pawns[c.byId].owner} pawn ${c.byId}.`);
-    }
-
-    // Time handling – AFTER subtracting elapsed, THEN give +30s, BEFORE switching turn
-    const now = Date.now();
-    if (state.gameStarted){
-      const elapsed = now - lastTurnAt;
-      state.players[me].timeMs = Math.max(0, state.players[me].timeMs - elapsed);
-      const BONUS = 30 * 1000; // 30 seconds in ms
-      state.players[me].timeMs += BONUS;
-    }
-    lastTurnAt = now;
-
-// Switch turn
-state.turn = me === 'ORANGE' ? 'BLUE' : 'ORANGE';
-state.turnCount += 1;
-
-// Magic reset
-resetAllMagic();
-
-// Set mv for new turn FIRST
-try {
-  const cur = state.turn;
+  // Build occupancy index excluding captured pawns
+  const nodeOccupants = {};
   for (const p of Object.values(pawns)) {
-    p.mv = (p.owner === cur && !p.captured) ? 1 : 0;
+    if (!p.captured && p.edge) {
+      if (!nodeOccupants[p.edge]) nodeOccupants[p.edge] = [];
+      nodeOccupants[p.edge].push(p.id);
+    }
   }
-} catch (e) {}
 
-// Respawn AFTER mv reset (respawn already sets p.mv = 0)
-respawnCapturedPawnsForCurrentPlayer();
+  const capturesThisTurn = [];
 
+  // Validate staged moves with capture rules
+  for (const m of pending.pawnMoves) {
+    const pawn = pawns[m.pawnId];
+    if (!pawn || pawn.owner !== me || pawn.captured) return;
 
-    const runeText = pending.rune ? ` and placed ${cards[pending.rune.cardId].code} on ${pending.rune.cellId}` : '';
-    logEvent(`${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.`);
+    const fromNode = pawn.edge;
+    const toNode = m.to;
 
-    pending.pawnMoves = [];
-    safeClearPendingRune();
-    pending.runeMpSpent = false;
-    pending.captures = [];
-    dragPreviewTarget=null;
-    rerender(); updateClocks();
+    if (!nodes[fromNode]?.neighbors.includes(toNode)) return;
+
+    // Current occupants on destination (alive only)
+    const occ = (nodeOccupants[toNode] || []).filter(pid => !pawns[pid].captured);
+    const sameColor = occ.filter(pid => pawns[pid].owner === me);
+    const enemy = occ.filter(pid => pawns[pid].owner !== me);
+
+    // Is same-color pawn at dest also moving away?
+    const alsoMovingAway = pending.pawnMoves.some(
+      x => x.pawnId !== m.pawnId && pawns[x.pawnId].edge === toNode
+    );
+
+    // Forbid stacking on own pawn unless that pawn is leaving
+    if (sameColor.length > 0 && !alsoMovingAway) {
+      return;
+    }
+
+    // Mark enemy for capture
+    if (enemy.length > 0) {
+      for (const eid of enemy) {
+        capturesThisTurn.push({ victimId: eid, byId: m.pawnId, dest: toNode });
+      }
+    }
+
+    // Virtually move the attacker for subsequent validations
+    nodeOccupants[toNode] = nodeOccupants[toNode] || [];
+    if (!nodeOccupants[toNode].includes(m.pawnId)) {
+      nodeOccupants[toNode].push(m.pawnId);
+    }
+    if (nodeOccupants[fromNode]) {
+      nodeOccupants[fromNode] = nodeOccupants[fromNode].filter(pid => pid !== m.pawnId);
+    }
   }
+
+  // Commit moves
+  for (const m of pending.pawnMoves) {
+    pawns[m.pawnId].edge = m.to;
+    delete previewEdges[m.pawnId];
+  }
+
+  // Persist rune placement
+  if (pending.rune && pending.rune.cardId && pending.rune.cellId) {
+    const meOwner = state.turn;
+    state.placedRunes.push({
+      cardId: pending.rune.cardId,
+      cellId: pending.rune.cellId,
+      owner: meOwner,
+      angle: 0,
+      exhausted: false
+    });
+    try {
+      const h = state.players[meOwner].hand;
+      state.players[meOwner].hand = h.filter(id => id !== pending.rune.cardId);
+    } catch (e) {}
+  }
+  if (pending.rune) {
+    const hand = state.players[me].hand;
+    state.players[me].hand = hand.filter(id => id !== pending.rune.cardId);
+  }
+
+  // Apply captures after all movement is committed
+  pending.captures = capturesThisTurn || [];
+  for (const c of pending.captures) {
+    const victim = pawns[c.victimId];
+    if (!victim || victim.captured) continue;
+
+    victim.captured = true;
+    victim.edge = null;       // off-board
+    victim.skipOwnTurns = 1;  // skip next own turn before respawn
+
+    logEvent(`${victim.owner} pawn ${victim.id} was captured by ${pawns[c.byId].owner} pawn ${c.byId}.`);
+  }
+
+  // Time handling – AFTER subtracting elapsed, THEN give +30s, BEFORE switching turn
+  const now = Date.now();
+  if (state.gameStarted) {
+    const elapsed = now - lastTurnAt;
+    state.players[me].timeMs = Math.max(0, state.players[me].timeMs - elapsed);
+    const BONUS = 30 * 1000; // 30 seconds in ms
+    state.players[me].timeMs += BONUS;
+  }
+  lastTurnAt = now;
+
+  // Switch turn
+  state.turn = me === "ORANGE" ? "BLUE" : "ORANGE";
+  state.turnCount += 1;
+
+  // Magic reset
+  resetAllMagic();
+
+  // Set mv for new turn FIRST
+  try {
+    const cur = state.turn;
+    for (const p of Object.values(pawns)) {
+      p.mv = (p.owner === cur && !p.captured) ? 1 : 0;
+    }
+  } catch (e) {}
+
+  // Respawn AFTER mv reset (respawn already sets p.mv = 0)
+  respawnCapturedPawnsForCurrentPlayer();
+
+  const runeText = pending.rune
+    ? ` and placed ${cards[pending.rune.cardId].code} on ${pending.rune.cellId}`
+    : "";
+  logEvent(`${me} moved ${pending.pawnMoves.length} pawn(s)${runeText}.`);
+
+  // Clear pending
+  pending.pawnMoves = [];
+  safeClearPendingRune();
+  pending.runeMpSpent = false;
+  pending.captures = [];
+  dragPreviewTarget = null;
+
+  // Local redraw
+  rerender();
+  updateClocks();
+
+  // ===== NEW: push final state of this turn to Firebase =====
+  if (typeof gameRef !== "undefined" && typeof makeStateSnapshot === "function") {
+    const snapshot = makeStateSnapshot();
+    gameRef.set(snapshot);
+  }
+}
+
 
   document.getElementById('undoBtn').addEventListener('click', undoLast);
   document.getElementById('endTurn').addEventListener('click', endTurn);
