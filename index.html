@@ -12,65 +12,87 @@
     storageBucket: "runes-e8e13.firebasestorage.app",
     messagingSenderId: "623606408838",
     appId: "1:623606408838:web:74b5838a99d3f0cf905307"
-    // measurementId is optional for what we're doing, so we can skip it
   };
 
   // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
-
-  // Get a handle to the Realtime Database
   const db = firebase.database();
 
-  // Tiny test write so we know it works
+  // (Optional) tiny test write so we know it works
   db.ref("test/hello").set({
     from: "runez",
     time: Date.now()
   });
+
   // All players in this room share the same game
-const roomId = "room1"; // later you can make this dynamic
-const gameRef = db.ref("games/" + roomId);
-  let isPushing = false; // avoid reacting to our own writes
+  const roomId = "room1"; // later you can make this dynamic
+  const gameRef = db.ref("games/" + roomId);
+  let isPushing = false; // avoids double-processing if you want later
 
-// Listen to changes from Firebase
-gameRef.on("value", function(snapshot) {
-  if (isPushing) return; // ignore our own update
+  // Listen to changes from Firebase
+  gameRef.on("value", function(snapshot) {
+    if (isPushing) return; // ignore our own outgoing write if we add that later
 
-  const data = snapshot.val();
-  if (!data) return;
+    const data = snapshot.val();
+    if (!data) return;
 
-  applyStateSnapshot(data);
-});
+    applyStateSnapshot(data);
+  });
 
+  // Turn our local game state into a plain object for Firebase
+  function makeStateSnapshot() {
+    return {
+      pawns: pawns,                    // uses global 'pawns'
+      runes: state.placedRunes,        // ✅ correct source for runes
+      state: {
+        turn: state.turn,
+        turnCount: state.turnCount,
+        players: state.players,
+        gameStarted: state.gameStarted
+      }
+    };
+  }
 
-// Helper: turn our local game state into a plain object for Firebase
-function makeStateSnapshot() {
-  return {
-    pawns: pawns,      // assuming you already have these globals
-    runes: runes,      // or whatever your rune state variable is called
-    state: {
-      turn: state.turn,
-      // add more fields if you want (clocks, scores, etc.)
+  // Apply a state object from Firebase to our local game
+  function applyStateSnapshot(snap) {
+    if (!snap) return;
+
+    // Copy pawn data into existing pawn objects (don't reassign the const)
+    if (snap.pawns) {
+      for (const id in pawns) {
+        if (snap.pawns[id]) {
+          Object.assign(pawns[id], snap.pawns[id]);
+        }
+      }
     }
-  };
-}
 
-// Helper: apply a state object from Firebase to our local game
-function applyStateSnapshot(snapshot) {
-  if (!snapshot) return;
+    // Runes (placed runes on the board)
+    if (Array.isArray(snap.runes)) {
+      state.placedRunes = snap.runes;
+    }
 
-  if (snapshot.pawns) pawns = snapshot.pawns;
-  if (snapshot.runes) runes = snapshot.runes;
-  if (snapshot.state && typeof snapshot.state.turn !== "undefined") {
-    state.turn = snapshot.state.turn;
+    // Turn / players / etc.
+    if (snap.state) {
+      if (typeof snap.state.turn !== "undefined") {
+        state.turn = snap.state.turn;
+      }
+      if (typeof snap.state.turnCount !== "undefined") {
+        state.turnCount = snap.state.turnCount;
+      }
+      if (snap.state.players) {
+        state.players = snap.state.players;
+      }
+      if (typeof snap.state.gameStarted !== "undefined") {
+        state.gameStarted = snap.state.gameStarted;
+      }
+    }
+
+    // Re-render the board with the new data
+    if (typeof rerender === "function") rerender();
+    if (typeof updateClocks === "function") updateClocks();
   }
-
-  // Re-render the board with the new data
-  if (typeof rerender === "function") {
-    rerender();
-  }
-}
-
 </script>
+
 
 <!-- /mnt/data/index.html -->
 <!DOCTYPE html>
@@ -78,7 +100,7 @@ function applyStateSnapshot(snapshot) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Runez</title>
+<title>Runez?</title>
 <style>
   :root{--boardGray:#6e5236;--edge:#2f2317;--gold:#c3a13a;--silver:#b9c0c6;--goldDeep:#9f8126;--silverDeep:#8e959e;--woodA:#2b2016;--woodB:#3b2d20;--woodC:#5a422d;--woodD:#7a5a3c;--accent:#8e5e2e;}
   html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;}
@@ -168,7 +190,6 @@ function applyStateSnapshot(snapshot) {
 </footer>
 
 <script>
-(() => {
   // 24 rune deck (visual only)
   const ELDER_24 = [
     {code:'FEHU',    sym:'ᚠ'},{code:'URUZ',   sym:'ᚢ'},{code:'THURISAZ',sym:'ᚦ'},{code:'ANSUZ', sym:'ᚨ'},
@@ -1099,7 +1120,7 @@ function startGame(){
     }
   }
 
-})();
+
 </script>
 
 <!-- SAFE HOOK: persistent runes + per-pawn move limit -->
