@@ -1100,7 +1100,14 @@ function startGame(){
   logEvent('Game started. ORANGE to move. Board, pawns, runes, and hands reset.');
   rerender();
   updateClocks();
+
+  // --- 8. Sync reset to Firebase so everyone sees a fresh board ---
+  if (typeof gameRef !== "undefined" && typeof makeStateSnapshot === "function") {
+    const snap = makeStateSnapshot();
+    gameRef.set(snap);
+  }
 }
+
 
   document.getElementById('startGame').addEventListener('click', startGame);
 
@@ -1117,6 +1124,7 @@ function startGame(){
       try{ delete previewEdges[last.pawnId]; }catch(e){}
       try{ if (pawns[last.pawnId]) pawns[last.pawnId].mv = 1; }catch(e){}
       rerender(); return;
+      
     }
   }
 
